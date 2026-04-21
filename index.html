@@ -55,7 +55,14 @@
 
     const DEFAULTS = {
       coUSD:"25.67", niUSD:"17093.18", liUSD:"19.62",
+      
+      // 2-1 (Preset) 용 기본값
       coContent:"11.6", niContent:"34.5", liContent:"6.8",
+      // 2-2 (직접입력) 용 기본값
+      customCo:"", customNi:"", customLi:"",
+      // 현재 선택된 모드 ("preset" 또는 "custom")
+      compMode:"preset",
+
       rateMode:"coni",
       targetCoNi:"105",
       targetCoNiLi:"",
@@ -69,9 +76,14 @@
       const niP = num(inp.niUSD) / 1000;
       const liP = num(inp.liUSD);
 
-      const coC = num(inp.coContent) / 100;
-      const niC = num(inp.niContent) / 100;
-      const liC = num(inp.liContent) / 100;
+      // 활성화된 모드에 따라 계산에 사용할 함량을 결정
+      const activeCo = inp.compMode === "custom" ? inp.customCo : inp.coContent;
+      const activeNi = inp.compMode === "custom" ? inp.customNi : inp.niContent;
+      const activeLi = inp.compMode === "custom" ? inp.customLi : inp.liContent;
+
+      const coC = num(activeCo) / 100;
+      const niC = num(activeNi) / 100;
+      const liC = num(activeLi) / 100;
 
       const coCont   = coC * coP;
       const niCont   = niC * niP;
@@ -91,7 +103,7 @@
       }
 
       return { coP, niP, liP, coCont, niCont, liCont, coNiCont, totCont,
-               tgtCoNi, tgtCoNiLi, tgtPayable };
+               tgtCoNi, tgtCoNiLi, tgtPayable, activeCo, activeNi, activeLi };
     }
 
     function computeExpand(inp, base) {
@@ -100,9 +112,10 @@
       const nir = num(inp.niRecovery) / 100;
       const lir = num(inp.liRecovery) / 100;
 
-      const coC = num(inp.coContent) / 100;
-      const niC = num(inp.niContent) / 100;
-      const liC = num(inp.liContent) / 100;
+      // 2시트에서 활성화된 값을 그대로 물고와서 회수율 적용
+      const coC = num(base.activeCo) / 100;
+      const niC = num(base.activeNi) / 100;
+      const liC = num(base.activeLi) / 100;
 
       const coOut  = coC * cor;
       const niOut  = niC * nir;
@@ -170,6 +183,7 @@
         setType(type);
         setPreset(preset.name);
         setInp(p => ({ ...p,
+          compMode: "preset", // 프리셋 선택 시 무조건 프리셋 모드로 자동 전환
           coContent: String(preset.co),
           niContent: String(preset.ni),
           liContent: String(preset.li),
@@ -196,12 +210,19 @@
               <IRow label="Li₂CO₃ 시세" value={inp.liUSD} onChange={s("liUSD")} unit="$/kg" accent />
             </div>
 
-            {/* ② 조성 */}
-            <div style={{ background:C.card, borderRadius:12, border:"1px solid "+C.border, overflow:"hidden", boxShadow:"0 2px 4px rgba(0,0,0,0.02)" }}>
-              <Sec label="② 원료 조성 (%)" color={C.green} />
+            {/* ②-1 원료 조성 (Preset) */}
+            <div 
+              onClick={() => setInp(p => ({ ...p, compMode: "preset" }))}
+              style={{ 
+                background:C.card, borderRadius:12, overflow:"hidden", cursor:"pointer",
+                border: inp.compMode === "preset" ? "2px solid "+C.green : "1px solid "+C.border, 
+                boxShadow: inp.compMode === "preset" ? "0 4px 12px rgba(6,95,70,0.1)" : "none",
+                opacity: inp.compMode === "preset" ? 1 : 0.5, transition:"all 0.2s" 
+              }}>
+              <Sec label="②-1. 원료 조성 (정해진 양식)" color={C.green} />
               <div style={{ display:"flex", borderBottom:"1px solid "+C.border, background:"#F8FAFC" }}>
                 {Object.keys(PRESETS).map(type => (
-                  <button key={type} onClick={() => { setType(type); setPreset(null); }}
+                  <button key={type} onClick={(e) => { e.stopPropagation(); setType(type); setPreset(null); setInp(p => ({ ...p, compMode: "preset" })); }}
                     style={{ flex:1, padding:"10px", fontSize:13, fontWeight:700, border:"none", background:"transparent", cursor:"pointer",
                       color:activeType===type ? C.green : C.muted, borderBottom:activeType===type ? "2px solid "+C.green : "2px solid transparent" }}>
                     {type}
@@ -210,9 +231,9 @@
               </div>
               <div style={{ padding:"12px 14px", display:"flex", flexWrap:"wrap", gap:6, background:"#FFFFFF" }}>
                 {PRESETS[activeType].map(preset => {
-                  const isActive = activePreset === preset.name;
+                  const isActive = activePreset === preset.name && inp.compMode === "preset";
                   return (
-                    <button key={preset.name} onClick={() => applyPreset(activeType, preset)}
+                    <button key={preset.name} onClick={(e) => { e.stopPropagation(); applyPreset(activeType, preset); }}
                       style={{ padding:"6px 12px", fontSize:12, fontWeight:600, border:"1px solid "+(isActive ? C.green : C.border),
                         borderRadius:20, background:isActive ? "#ECFDF5" : "#FFFFFF", color:isActive ? C.green : C.muted, cursor:"pointer", transition:"all 0.2s" }}>
                       {preset.name}
@@ -222,15 +243,49 @@
               </div>
               <div style={{ padding:"0 14px 14px", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
                 {[
-                  { label:"Co", val:inp.coContent, cont:base.coCont },
-                  { label:"Ni", val:inp.niContent, cont:base.niCont },
-                  { label:"Li", val:inp.liContent, cont:base.liCont },
+                  { label:"Co", val:inp.coContent, p:base.coP, conv:1 },
+                  { label:"Ni", val:inp.niContent, p:base.niP, conv:1 },
+                  { label:"Li", val:inp.liContent, p:base.liP, conv:LI_CONV },
                 ].map(m => (
                   <div key={m.label} style={{ background:C.secBg, borderRadius:8, padding:"10px", border:"1px solid "+C.border, textAlign:"center" }}>
                     <div style={{ fontSize:12, fontWeight:800, color:C.green, marginBottom:4 }}>{m.label} 함량</div>
                     <div style={{ fontSize:22, fontWeight:800, color:C.text }}>{m.val}<span style={{fontSize:12,color:C.dim,marginLeft:2}}>%</span></div>
+                    <div style={{ fontSize:11, color:C.green, marginTop:6, background:"#ECFDF5", padding:"3px 0", borderRadius:4, fontWeight:600 }}>
+                      ${f2((num(m.val)/100) * m.conv * m.p)}/kg
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ②-2 원료 조성 (직접입력) */}
+            <div 
+              onClick={() => setInp(p => ({ ...p, compMode: "custom" }))}
+              style={{ 
+                background:C.card, borderRadius:12, overflow:"hidden", cursor:"pointer",
+                border: inp.compMode === "custom" ? "2px solid "+C.blue : "1px solid "+C.border, 
+                boxShadow: inp.compMode === "custom" ? "0 4px 12px rgba(29,78,216,0.1)" : "none",
+                opacity: inp.compMode === "custom" ? 1 : 0.5, transition:"all 0.2s" 
+              }}>
+              <Sec label="②-2. 원료 조성 (자유 입력)" color={C.blue} />
+              <div style={{ padding:"14px", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                {[
+                  { label:"Co", key:"customCo", p:base.coP, conv:1 },
+                  { label:"Ni", key:"customNi", p:base.niP, conv:1 },
+                  { label:"Li", key:"customLi", p:base.liP, conv:LI_CONV },
+                ].map(m => (
+                  <div key={m.label} style={{ background:C.secBg, borderRadius:8, padding:"10px", border:"1px solid "+C.border, textAlign:"center" }}>
+                    <div style={{ fontSize:12, fontWeight:800, color:C.blue, marginBottom:6 }}>{m.label} 직접입력</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <input type="number" step="any" value={inp[m.key]}
+                        onChange={e => setInp(p => ({ ...p, compMode: "custom", [m.key]: e.target.value }))}
+                        onClick={e => e.stopPropagation()}
+                        placeholder="0"
+                        style={{ width:"100%", maxWidth:65, fontSize:22, fontWeight:800, textAlign:"center", border:"none", background:"transparent", borderBottom:"2px solid "+C.blue, color:C.text, outline:"none", padding:0 }} />
+                      <span style={{fontSize:12,color:C.dim,marginLeft:2}}>%</span>
+                    </div>
                     <div style={{ fontSize:11, color:C.blue, marginTop:6, background:"#EFF6FF", padding:"3px 0", borderRadius:4, fontWeight:600 }}>
-                      ${f2(m.cont)}/kg
+                      ${f2((num(inp[m.key])/100) * m.conv * m.p)}/kg
                     </div>
                   </div>
                 ))}
@@ -403,3 +458,4 @@
   </script>
 </body>
 </html>
+
